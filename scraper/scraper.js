@@ -1,12 +1,23 @@
 import { chromium } from "playwright";
+import { existsSync, mkdirSync } from "fs";
+import { join } from "path";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080";
 const FB_VIDEO_URL = process.env.FB_VIDEO_URL || "";
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "3000", 10);
+const PROFILE_DIR = join(process.cwd(), ".browser-profile");
 
 if (!FB_VIDEO_URL) {
-  console.error("ERROR: Set FB_VIDEO_URL env variable (e.g. https://www.facebook.com/YourPage/videos/123456)");
+  console.error(
+    "ERROR: Set FB_VIDEO_URL env variable\n" +
+      'Example: FB_VIDEO_URL="https://www.facebook.com/YourPage/videos/123456" npm start'
+  );
   process.exit(1);
+}
+
+// Ensure profile directory exists for persistent login
+if (!existsSync(PROFILE_DIR)) {
+  mkdirSync(PROFILE_DIR, { recursive: true });
 }
 
 const seenComments = new Set();
@@ -20,120 +31,157 @@ async function postComment(text, user) {
     });
     if (res.ok) {
       const order = await res.json();
-      console.log(`[ORDER] ${user}: "${text}" → order ${order.id}`);
+      console.log(`  ✓ ORDER created: ${order.id} (${user})`);
     } else {
       const err = await res.text();
-      console.log(`[SKIP] ${user}: "${text}" → ${err}`);
+      console.log(`  → skipped: ${err}`);
     }
   } catch (e) {
-    console.error(`[ERROR] Failed to post comment: ${e.message}`);
+    console.error(`  ✗ backend error: ${e.message}`);
   }
 }
 
 async function scrapeComments(page) {
-  const comments = await page.evaluate(() => {
+  return await page.evaluate(() => {
     const results = [];
-    // Facebook live comments are in various container elements
-    // Try multiple selectors that Facebook uses
-    const selectors = [
-      '[data-testid="UFI2Comment/body"]',
-      'div[dir="auto"][style*="text-align"]',
-      'ul[class] > li div[dir="auto"]',
-      // Generic fallback: look for comment-like structures
-      'div[role="article"] div[dir="auto"]',
-    ];
 
-    for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) {
-        elements.forEach((el) => {
-          const text = el.innerText?.trim();
-          if (text && text.length < 200) {
-            // Try to find the author name nearby
-            const article = el.closest('[role="article"]') || el.closest("li") || el.parentElement?.parentElement;
-            const authorEl = article?.querySelector("a[role='link'] > span, a > strong, h3 span, h4 span");
-            const author = authorEl?.innerText?.trim() || "unknown";
-            results.push({ text, author });
+    // Strategy: find all comment containers and extract text + author
+    // Facebook wraps live comments in list items or article-like divs
+    const commentContainers = document.querySelectorAll(
+      // Live comment list items
+      'ul li[class], div[role="article"]'
+    );
+
+    for (const container of commentContainers) {
+      // Get all text nodes that look like comment body
+      const textEls = container.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+      let commentText = "";
+      for (const el of textEls) {
+        const t = el.innerText?.trim();
+        // Skip very long or empty strings, skip author names (they're usually short and in links)
+        if (t && t.length > 0 && t.length < 200) {
+          // Check if this element is inside a link (likely author name)
+          if (!el.closest("a") && !el.closest("h3") && !el.closest("h4")) {
+            commentText = t;
+            break;
           }
-        });
-        if (results.length > 0) break;
+        }
       }
+
+      if (!commentText) continue;
+
+      // Find author: usually in an <a> with role="link" or a <strong>
+      let author = "unknown";
+      const authorEl =
+        container.querySelector("a[role='link'] span") ||
+        container.querySelector("a > strong") ||
+        container.querySelector("a > span");
+      if (authorEl) {
+        const name = authorEl.innerText?.trim();
+        if (name && name.length < 100) author = name;
+      }
+
+      results.push({ text: commentText, author });
     }
+
     return results;
   });
-
-  return comments;
 }
 
 async function main() {
-  console.log(`Starting Facebook Live comment scraper`);
-  console.log(`Video URL: ${FB_VIDEO_URL}`);
-  console.log(`Backend: ${BACKEND_URL}`);
-  console.log(`Poll interval: ${POLL_INTERVAL}ms`);
+  console.log("╔══════════════════════════════════════════╗");
+  console.log("║   Facebook Live Comment Scraper          ║");
+  console.log("╚══════════════════════════════════════════╝");
+  console.log();
+  console.log(`Video:    ${FB_VIDEO_URL}`);
+  console.log(`Backend:  ${BACKEND_URL}`);
+  console.log(`Interval: ${POLL_INTERVAL}ms`);
+  console.log(`Profile:  ${PROFILE_DIR}`);
   console.log();
 
-  const browser = await chromium.launch({
-    headless: false, // Use headed mode so you can log in to Facebook
-  });
-
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  // Use persistent context so Facebook login is remembered between runs
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    headless: false,
     viewport: { width: 1280, height: 900 },
+    args: ["--disable-blink-features=AutomationControlled"],
   });
 
-  const page = await context.newPage();
+  const page = context.pages()[0] || (await context.newPage());
 
-  // Navigate to the video
   console.log("Opening Facebook Live page...");
-  console.log(">>> If prompted, LOG IN to Facebook in the browser window <<<");
-  console.log();
-  await page.goto(FB_VIDEO_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(FB_VIDEO_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-  // Wait for user to log in if needed
-  console.log("Waiting 15 seconds for page to load (log in if needed)...");
-  await page.waitForTimeout(15000);
+  // Check if we need to log in
+  const url = page.url();
+  if (url.includes("login") || url.includes("checkpoint")) {
+    console.log();
+    console.log(">>> You need to LOG IN in the browser window <<<");
+    console.log(">>> After logging in, the scraper will continue automatically <<<");
+    console.log();
 
-  // Close any popups (cookie consent, login prompts, etc.)
-  try {
-    const closeButtons = await page.$$('[aria-label="Close"], [data-testid="cookie-policy-manage-dialog-accept-button"]');
-    for (const btn of closeButtons) {
-      await btn.click().catch(() => {});
-    }
-  } catch {
-    // ignore
+    // Wait for navigation away from login page (up to 5 minutes)
+    await page.waitForURL("**/facebook.com/**", { timeout: 300000 }).catch(() => {});
+
+    // Navigate to the video after login
+    await page.goto(FB_VIDEO_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   }
 
-  console.log("Starting comment polling...");
+  // Wait for page to fully load
+  console.log("Waiting for page to load...");
+  await page.waitForTimeout(5000);
+
+  // Try to dismiss popups
+  try {
+    const dismissSelectors = [
+      '[aria-label="Close"]',
+      '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+      'div[role="button"]:has-text("Allow")',
+      'div[role="button"]:has-text("Not Now")',
+    ];
+    for (const sel of dismissSelectors) {
+      const btn = page.locator(sel).first();
+      if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await btn.click().catch(() => {});
+        await page.waitForTimeout(500);
+      }
+    }
+  } catch {
+    // ignore popup dismissal errors
+  }
+
+  console.log();
+  console.log("Scraping comments... (press Ctrl+C to stop)");
+  console.log("Comments matching '<code> <phone>' will create orders.");
+  console.log("─".repeat(50));
   console.log();
 
   // Poll loop
-  setInterval(async () => {
+  const interval = setInterval(async () => {
     try {
       const comments = await scrapeComments(page);
 
       for (const { text, author } of comments) {
-        // Create a unique key for deduplication
         const key = `${author}:${text}`;
         if (seenComments.has(key)) continue;
         seenComments.add(key);
 
-        console.log(`[COMMENT] ${author}: ${text}`);
+        console.log(`[${author}] ${text}`);
 
-        // Only forward comments that look like claims (number + phone)
+        // Forward comments matching claim format: <1-2 digit code> <phone number>
         if (/^\d{1,2}\s+\d+/.test(text)) {
           await postComment(text, author);
         }
       }
     } catch (e) {
-      console.error(`[ERROR] Scrape failed: ${e.message}`);
+      // Page might be navigating, just retry next tick
     }
   }, POLL_INTERVAL);
 
-  // Keep alive
+  // Cleanup on exit
   process.on("SIGINT", async () => {
     console.log("\nShutting down...");
-    await browser.close();
+    clearInterval(interval);
+    await context.close();
     process.exit(0);
   });
 }

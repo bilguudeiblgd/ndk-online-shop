@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"live-selling/internal/api"
-	"live-selling/internal/facebook"
 	"live-selling/internal/service"
 	"live-selling/internal/store"
 	"live-selling/internal/ws"
@@ -21,10 +20,6 @@ func main() {
 	hub := ws.NewHub()
 	svc := service.NewLiveService(memStore, hub)
 	handlers := api.NewHandlers(svc)
-
-	// Facebook integration (token-based, no OAuth)
-	fbClient := facebook.NewClient()
-	fbHandlers := api.NewFacebookHandlers(fbClient, svc)
 
 	// Start order expiration worker (expire after 10 minutes, check every 30s)
 	svc.StartExpirationWorker(10*time.Minute, 30*time.Second)
@@ -46,13 +41,6 @@ func main() {
 	r.Get("/orders", handlers.GetOrders)
 	r.Post("/comments", handlers.PostComment)
 	r.Post("/orders/{id}/pay", handlers.PayOrder)
-
-	// Facebook integration
-	r.Get("/fb/status", fbHandlers.GetStatus)
-	r.Post("/fb/token", fbHandlers.SetToken)
-	r.Get("/fb/live-videos", fbHandlers.GetLiveVideos)
-	r.Post("/fb/poll/start", fbHandlers.StartPolling)
-	r.Post("/fb/poll/stop", fbHandlers.StopPolling)
 
 	// WebSocket
 	r.Get("/ws", hub.HandleWS)
