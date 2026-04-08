@@ -7,7 +7,8 @@ import { useWebSocket } from "@/lib/useWebSocket";
 import ProductForm from "@/components/ProductForm";
 import ActiveProductPanel from "@/components/ActiveProductPanel";
 import OrdersFeed from "@/components/OrdersFeed";
-import FacebookConnect from "@/components/FacebookConnect";
+import ScraperControl from "@/components/ScraperControl";
+
 
 export default function LivePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -84,7 +85,7 @@ export default function LivePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left column: form + products */}
           <div className="lg:col-span-2 space-y-6">
-            <FacebookConnect />
+            <ScraperControl />
             <ProductForm />
             <div>
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">

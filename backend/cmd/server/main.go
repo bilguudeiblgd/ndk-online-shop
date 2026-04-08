@@ -28,7 +28,7 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3001"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3001", "*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type"},
 		AllowCredentials: true,
@@ -40,6 +40,7 @@ func main() {
 	r.Post("/products/{id}/end", handlers.EndProduct)
 	r.Get("/orders", handlers.GetOrders)
 	r.Post("/comments", handlers.PostComment)
+	r.Post("/webhook", handlers.Webhook)
 	r.Post("/orders/{id}/pay", handlers.PayOrder)
 
 	// WebSocket
