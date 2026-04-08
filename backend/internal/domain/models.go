@@ -33,6 +33,7 @@ type Product struct {
 type Order struct {
 	ID        string      `json:"id"`
 	ProductID string      `json:"productId"`
+	UserName  string      `json:"userName"`
 	Phone     string      `json:"phone"`
 	Status    OrderStatus `json:"status"`
 	CreatedAt time.Time   `json:"createdAt"`

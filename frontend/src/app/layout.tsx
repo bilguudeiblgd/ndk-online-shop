@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Live Selling Dashboard",
-  description: "Real-time live selling management system",
+  title: "Шууд Худалдаа",
+  description: "Шууд худалдааны удирдлагын систем",
 };
 
 export default function RootLayout({

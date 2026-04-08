@@ -115,7 +115,7 @@ func (s *MemoryStore) FindProductByClaimCode(code int) *domain.Product {
 
 // ReserveStock atomically reserves one unit and creates an order.
 // Returns the order or an error if sold out.
-func (s *MemoryStore) ReserveStock(productID, phone string) (*domain.Order, error) {
+func (s *MemoryStore) ReserveStock(productID, userName, phone string) (*domain.Order, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -135,6 +135,7 @@ func (s *MemoryStore) ReserveStock(productID, phone string) (*domain.Order, erro
 	order := &domain.Order{
 		ID:        uuid.New().String(),
 		ProductID: productID,
+		UserName:  userName,
 		Phone:     phone,
 		Status:    domain.OrderStatusReserved,
 		CreatedAt: time.Now(),

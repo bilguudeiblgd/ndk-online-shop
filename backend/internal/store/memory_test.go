@@ -23,7 +23,7 @@ func TestConcurrentReservations_NoOverselling(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			_, err := s.ReserveStock(p.ID, "090000000")
+			_, err := s.ReserveStock(p.ID, "TestUser", "090000000")
 			if err == nil {
 				mu.Lock()
 				successes++

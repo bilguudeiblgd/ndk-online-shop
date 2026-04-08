@@ -14,6 +14,7 @@ export interface Product {
 export interface Order {
   id: string;
   productId: string;
+  userName: string;
   phone: string;
   status: "RESERVED" | "PAID" | "EXPIRED";
   createdAt: string;

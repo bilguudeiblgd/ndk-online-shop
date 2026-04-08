@@ -70,7 +70,7 @@ func (s *LiveService) ProcessComment(text, user string) (*domain.Order, error) {
 		return nil, fmt.Errorf("no active product with claim code %d", code)
 	}
 
-	order, err := s.store.ReserveStock(product.ID, phone)
+	order, err := s.store.ReserveStock(product.ID, user, phone)
 	if err != nil {
 		if err.Error() == "sold out" {
 			s.hub.Broadcast(domain.WSEvent{
