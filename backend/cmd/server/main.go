@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"live-selling/internal/api"
@@ -16,12 +17,25 @@ import (
 )
 
 func main() {
-	memStore := store.NewMemoryStore()
-	hub := ws.NewHub()
-	svc := service.NewLiveService(memStore, hub)
-	handlers := api.NewHandlers(svc)
+	var dataStore store.Store
 
-	// Start order expiration worker (expire after 10 minutes, check every 30s)
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		pg, err := store.NewPostgresStore(dbURL)
+		if err != nil {
+			log.Fatalf("Postgres холбогдож чадсангүй: %v", err)
+		}
+		dataStore = pg
+		log.Println("Postgres-д холбогдлоо")
+	} else {
+		dataStore = store.NewMemoryStore()
+		log.Println("In-memory store ашиглаж байна")
+	}
+
+	hub := ws.NewHub()
+	svc := service.NewLiveService(dataStore, hub)
+	handlers := api.NewHandlers(svc)
+	excelHandlers := api.NewExcelHandlers()
+
 	svc.StartExpirationWorker(10*time.Minute, 30*time.Second)
 
 	r := chi.NewRouter()
@@ -43,10 +57,13 @@ func main() {
 	r.Post("/webhook", handlers.Webhook)
 	r.Post("/orders/{id}/pay", handlers.PayOrder)
 
+	// Excel filter
+	r.Post("/excel/filter", excelHandlers.FilterExcel)
+
 	// WebSocket
 	r.Get("/ws", hub.HandleWS)
 
-	log.Println("Server starting on :8080")
+	log.Println("Server :8080 дээр ажиллаж байна")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
 	}

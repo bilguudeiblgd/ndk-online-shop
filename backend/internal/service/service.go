@@ -14,11 +14,11 @@ import (
 var commentRegex = regexp.MustCompile(`^(\d{1,2})\s+(\d+)`)
 
 type LiveService struct {
-	store *store.MemoryStore
+	store store.Store
 	hub   *ws.Hub
 }
 
-func NewLiveService(store *store.MemoryStore, hub *ws.Hub) *LiveService {
+func NewLiveService(store store.Store, hub *ws.Hub) *LiveService {
 	return &LiveService{store: store, hub: hub}
 }
 

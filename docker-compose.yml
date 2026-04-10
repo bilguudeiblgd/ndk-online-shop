@@ -1,10 +1,23 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: liveselling
+      POSTGRES_USER: liveselling
+      POSTGRES_PASSWORD: liveselling
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   backend:
     build: ./backend
     ports:
       - "8080:8080"
-    env_file:
-      - ./backend/.env
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://liveselling:liveselling@db:5432/liveselling?sslmode=disable
 
   frontend:
     build:
@@ -17,3 +30,6 @@ services:
       - backend
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8080
+
+volumes:
+  pgdata:

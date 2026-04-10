@@ -2,16 +2,10 @@
 
 import type { Order, Product } from "@/lib/types";
 
-const statusColors: Record<string, string> = {
-  RESERVED: "bg-yellow-100 text-yellow-800",
-  PAID: "bg-green-100 text-green-800",
-  EXPIRED: "bg-gray-100 text-gray-500",
-};
-
-const statusLabels: Record<string, string> = {
-  RESERVED: "Захиалсан",
-  PAID: "Төлсөн",
-  EXPIRED: "Хугацаа дууссан",
+const statusConfig: Record<string, { label: string; dot: string; bg: string; text: string }> = {
+  RESERVED: { label: "Захиалсан", dot: "bg-yellow-400", bg: "bg-yellow-50", text: "text-yellow-700" },
+  PAID: { label: "Төлсөн", dot: "bg-emerald-400", bg: "bg-emerald-50", text: "text-emerald-700" },
+  EXPIRED: { label: "Хугацаа дууссан", dot: "bg-gray-300", bg: "bg-gray-50", text: "text-gray-500" },
 };
 
 export default function OrdersFeed({
@@ -29,43 +23,41 @@ export default function OrdersFeed({
 
   if (sorted.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
-        Захиалга байхгүй. Хүлээж байна...
+      <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+        <p className="text-sm text-gray-400">Захиалга байхгүй</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="px-4 py-3 border-b bg-gray-50">
-        <h2 className="font-bold text-gray-800">
-          Захиалгууд <span className="text-sm font-normal text-gray-400">({orders.length})</span>
-        </h2>
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">Захиалгууд</h2>
+          <span className="text-xs text-gray-400">{orders.length}</span>
+        </div>
       </div>
-      <div className="divide-y max-h-[500px] overflow-y-auto">
+      <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
         {sorted.map((o) => {
           const product = productMap.get(o.productId);
+          const config = statusConfig[o.status];
           return (
-            <div key={o.id} className="px-4 py-3">
+            <div key={o.id} className="px-4 py-3 hover:bg-gray-50 transition-colors">
               <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-medium text-sm text-gray-800">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
                     {o.userName || "Хэрэглэгч"}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-2">
-                    {product?.name ?? o.productId.slice(0, 8)}
-                  </span>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {product?.name ?? "—"} &middot; <span className="font-mono">{o.phone}</span>
+                  </p>
                 </div>
-                <span
-                  className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    statusColors[o.status] ?? ""
-                  }`}
-                >
-                  {statusLabels[o.status] ?? o.status}
-                </span>
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                <span className="font-mono">{o.phone}</span>
+                {config && (
+                  <span className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md ${config.bg} ${config.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
+                    {config.label}
+                  </span>
+                )}
               </div>
             </div>
           );

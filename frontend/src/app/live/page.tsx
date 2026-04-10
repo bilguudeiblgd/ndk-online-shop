@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Product, Order, WSEvent } from "@/lib/types";
 import { getActiveProducts, getOrders } from "@/lib/api";
 import { useWebSocket } from "@/lib/useWebSocket";
+import AppShell from "@/components/AppShell";
 import ProductForm from "@/components/ProductForm";
 import ActiveProductPanel from "@/components/ActiveProductPanel";
 import OrdersFeed from "@/components/OrdersFeed";
@@ -57,39 +58,41 @@ export default function LivePage() {
   useWebSocket(handleEvent);
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">
-            Шууд Худалдаа
-          </h1>
-          <div className="flex items-center gap-2">
+    <AppShell>
+      <div className="px-8 py-6">
+        {/* Page header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">Шууд худалдаа</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Бүтээгдэхүүн нэмэх, захиалга хянах</p>
+          </div>
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-full px-3 py-1">
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-sm text-gray-500">ШУУД</span>
+            <span className="text-xs font-medium text-red-600">ШУУД</span>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left: form + products */}
           <div className="lg:col-span-2 space-y-6">
             <ProductForm />
             <div>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
                 Идэвхтэй бүтээгдэхүүн
               </h2>
               <ActiveProductPanel products={products} />
             </div>
           </div>
 
+          {/* Right: orders */}
           <div>
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
               Захиалгууд
             </h2>
             <OrdersFeed orders={orders} products={allProducts} />
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

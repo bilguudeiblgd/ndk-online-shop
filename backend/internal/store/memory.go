@@ -41,6 +41,7 @@ func (s *MemoryStore) CreateProduct(name, size, color string, price float64, sto
 		Size:      size,
 		Color:     color,
 		Price:     price,
+		ImageURL:  "",
 		Stock:     stock,
 		Reserved:  0,
 		ClaimCode: code,

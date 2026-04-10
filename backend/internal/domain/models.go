@@ -23,6 +23,7 @@ type Product struct {
 	Size      string        `json:"size"`
 	Color     string        `json:"color"`
 	Price     float64       `json:"price"`
+	ImageURL  string        `json:"imageUrl"`
 	Stock     int           `json:"stock"`
 	Reserved  int           `json:"reserved"`
 	ClaimCode int           `json:"claimCode"`
