@@ -51,6 +51,9 @@ module.exports = defineConfig({
             clientPort: 5173,
           },
         },
+        optimizeDeps: {
+          force: true,
+        },
       }
     },
   },

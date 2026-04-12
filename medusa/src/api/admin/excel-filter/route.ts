@@ -1,8 +1,18 @@
-import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { filterTransactions, ColumnMapping, Product } from "../../../lib/excel-filter"
+import {
+  AuthenticatedMedusaRequest,
+  MedusaResponse,
+} from "@medusajs/framework/http"
+import {
+  filterTransactions,
+  ColumnMapping,
+  VariantFilter,
+} from "../../../lib/excel-filter"
 import multer from "multer"
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+})
 
 function parseMultipart(req: any, res: any): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -27,17 +37,22 @@ export async function POST(
 
   const body = req.body as any
 
-  // Parse products
-  let products: Product[] = []
+  // Parse variant filters
+  let variants: VariantFilter[] = []
   try {
-    products = JSON.parse(body.products || "[]")
+    variants = JSON.parse(body.variants || "[]")
   } catch {
     res.status(400).json({ error: "бүтээгдэхүүний мэдээлэл буруу" })
     return
   }
 
-  if (!products.length || !products.every((p) => p.name && p.price > 0)) {
-    res.status(400).json({ error: "бүтээгдэхүүн нэмнэ үү (нэр + үнэ)" })
+  if (
+    !variants.length ||
+    !variants.every((v) => v.variantId && v.price > 0)
+  ) {
+    res
+      .status(400)
+      .json({ error: "бүтээгдэхүүн сонгоно уу (variant + үнэ)" })
     return
   }
 
@@ -57,18 +72,22 @@ export async function POST(
   const startRow: number | undefined = body.startRow
     ? parseInt(body.startRow, 10)
     : undefined
+  const dateFrom: string | undefined = body.dateFrom || undefined
+  const dateTo: string | undefined = body.dateTo || undefined
 
   const logger = req.scope.resolve("logger")
   logger.info(
-    `[excel] файл: ${file.originalname}, бүтээгдэхүүн: ${products.length}, хуудас: ${sheet}`
+    `[excel] файл: ${file.originalname}, variants: ${variants.length}, хуудас: ${sheet}`
   )
 
   try {
     const { result, output } = await filterTransactions(file.buffer, {
-      products,
+      variants,
       sheet,
       columns,
       startRow,
+      dateFrom,
+      dateTo,
     })
 
     logger.info(
@@ -79,11 +98,12 @@ export async function POST(
     if (format === "json") {
       res.json({
         total: result.total,
-        accepted: result.acceptedCount,
-        badAmount: result.badAmount.length,
-        badPhone: result.badPhone.length,
-        noMatch: result.noMatch.length,
-        productStats: result.productStats,
+        acceptedCount: result.acceptedCount,
+        accepted: result.accepted, // full list for order creation
+        badAmountCount: result.badAmount.length,
+        badPhoneCount: result.badPhone.length,
+        noMatchCount: result.noMatch.length,
+        variantStats: result.variantStats,
       })
       return
     }

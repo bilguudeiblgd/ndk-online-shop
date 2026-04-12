@@ -63,7 +63,7 @@ export default async function seedDemoData({ container }: ExecArgs) {
   const salesChannelModuleService = container.resolve(Modules.SALES_CHANNEL);
   const storeModuleService = container.resolve(Modules.STORE);
 
-  const countries = ["gb", "de", "dk", "se", "fr", "es", "it"];
+  const countries = ["mn", "kr"];
 
   logger.info("Seeding store data...");
   const [store] = await storeModuleService.listStores();
@@ -72,7 +72,6 @@ export default async function seedDemoData({ container }: ExecArgs) {
   });
 
   if (!defaultSalesChannel.length) {
-    // create the default sales channel
     const { result: salesChannelResult } = await createSalesChannelsWorkflow(
       container
     ).run({
@@ -92,11 +91,11 @@ export default async function seedDemoData({ container }: ExecArgs) {
       store_id: store.id,
       supported_currencies: [
         {
-          currency_code: "eur",
+          currency_code: "mnt",
           is_default: true,
         },
         {
-          currency_code: "usd",
+          currency_code: "krw",
         },
       ],
     },
@@ -115,15 +114,22 @@ export default async function seedDemoData({ container }: ExecArgs) {
     input: {
       regions: [
         {
-          name: "Europe",
-          currency_code: "eur",
-          countries,
+          name: "Монгол",
+          currency_code: "mnt",
+          countries: ["mn"],
+          payment_providers: ["pp_system_default"],
+        },
+        {
+          name: "South Korea",
+          currency_code: "krw",
+          countries: ["kr"],
           payment_providers: ["pp_system_default"],
         },
       ],
     },
   });
-  const region = regionResult[0];
+  const regionMN = regionResult[0];
+  const regionKR = regionResult[1];
   logger.info("Finished seeding regions.");
 
   logger.info("Seeding tax regions...");
@@ -142,10 +148,10 @@ export default async function seedDemoData({ container }: ExecArgs) {
     input: {
       locations: [
         {
-          name: "European Warehouse",
+          name: "Улаанбаатар агуулах",
           address: {
-            city: "Copenhagen",
-            country_code: "DK",
+            city: "Ulaanbaatar",
+            country_code: "MN",
             address_1: "",
           },
         },
@@ -194,38 +200,18 @@ export default async function seedDemoData({ container }: ExecArgs) {
   }
 
   const fulfillmentSet = await fulfillmentModuleService.createFulfillmentSets({
-    name: "European Warehouse delivery",
+    name: "Хүргэлт",
     type: "shipping",
     service_zones: [
       {
-        name: "Europe",
+        name: "Монгол & Солонгос",
         geo_zones: [
           {
-            country_code: "gb",
+            country_code: "mn",
             type: "country",
           },
           {
-            country_code: "de",
-            type: "country",
-          },
-          {
-            country_code: "dk",
-            type: "country",
-          },
-          {
-            country_code: "se",
-            type: "country",
-          },
-          {
-            country_code: "fr",
-            type: "country",
-          },
-          {
-            country_code: "es",
-            type: "country",
-          },
-          {
-            country_code: "it",
+            country_code: "kr",
             type: "country",
           },
         ],
@@ -245,28 +231,32 @@ export default async function seedDemoData({ container }: ExecArgs) {
   await createShippingOptionsWorkflow(container).run({
     input: [
       {
-        name: "Standard Shipping",
+        name: "Энгийн хүргэлт",
         price_type: "flat",
         provider_id: "manual_manual",
         service_zone_id: fulfillmentSet.service_zones[0].id,
         shipping_profile_id: shippingProfile.id,
         type: {
-          label: "Standard",
-          description: "Ship in 2-3 days.",
+          label: "Энгийн",
+          description: "2-3 өдөрт хүргэнэ.",
           code: "standard",
         },
         prices: [
           {
-            currency_code: "usd",
-            amount: 10,
+            currency_code: "mnt",
+            amount: 5000,
           },
           {
-            currency_code: "eur",
-            amount: 10,
+            currency_code: "krw",
+            amount: 3000,
           },
           {
-            region_id: region.id,
-            amount: 10,
+            region_id: regionMN.id,
+            amount: 5000,
+          },
+          {
+            region_id: regionKR.id,
+            amount: 3000,
           },
         ],
         rules: [
@@ -283,28 +273,32 @@ export default async function seedDemoData({ container }: ExecArgs) {
         ],
       },
       {
-        name: "Express Shipping",
+        name: "Шуурхай хүргэлт",
         price_type: "flat",
         provider_id: "manual_manual",
         service_zone_id: fulfillmentSet.service_zones[0].id,
         shipping_profile_id: shippingProfile.id,
         type: {
-          label: "Express",
-          description: "Ship in 24 hours.",
+          label: "Шуурхай",
+          description: "24 цагт хүргэнэ.",
           code: "express",
         },
         prices: [
           {
-            currency_code: "usd",
-            amount: 10,
+            currency_code: "mnt",
+            amount: 10000,
           },
           {
-            currency_code: "eur",
-            amount: 10,
+            currency_code: "krw",
+            amount: 5000,
           },
           {
-            region_id: region.id,
-            amount: 10,
+            region_id: regionMN.id,
+            amount: 10000,
+          },
+          {
+            region_id: regionKR.id,
+            amount: 5000,
           },
         ],
         rules: [
@@ -378,19 +372,19 @@ export default async function seedDemoData({ container }: ExecArgs) {
     input: {
       product_categories: [
         {
-          name: "Shirts",
+          name: "Цамц",
           is_active: true,
         },
         {
-          name: "Sweatshirts",
+          name: "Хүрэм",
           is_active: true,
         },
         {
-          name: "Pants",
+          name: "Өмд",
           is_active: true,
         },
         {
-          name: "Merch",
+          name: "Бусад",
           is_active: true,
         },
       ],
@@ -401,12 +395,11 @@ export default async function seedDemoData({ container }: ExecArgs) {
     input: {
       products: [
         {
-          title: "Medusa T-Shirt",
+          title: "Футболк",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Shirts")!.id,
+            categoryResult.find((cat) => cat.name === "Цамц")!.id,
           ],
-          description:
-            "Reimagine the feeling of a classic T-shirt. With our cotton T-shirts, everyday essentials no longer have to be ordinary.",
+          description: "Өдөр тутмын хөнгөн цамц.",
           handle: "t-shirt",
           weight: 400,
           status: ProductStatus.PUBLISHED,
@@ -416,184 +409,101 @@ export default async function seedDemoData({ container }: ExecArgs) {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-front.png",
             },
             {
-              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-black-back.png",
-            },
-            {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-white-front.png",
-            },
-            {
-              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/tee-white-back.png",
             },
           ],
           options: [
             {
-              title: "Size",
+              title: "Размер",
               values: ["S", "M", "L", "XL"],
             },
             {
-              title: "Color",
-              values: ["Black", "White"],
+              title: "Өнгө",
+              values: ["Хар", "Цагаан"],
             },
           ],
           variants: [
             {
-              title: "S / Black",
-              sku: "SHIRT-S-BLACK",
-              options: {
-                Size: "S",
-                Color: "Black",
-              },
+              title: "S / Хар",
+              sku: "TS-S-BLK",
+              options: { "Размер": "S", "Өнгө": "Хар" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "S / White",
-              sku: "SHIRT-S-WHITE",
-              options: {
-                Size: "S",
-                Color: "White",
-              },
+              title: "S / Цагаан",
+              sku: "TS-S-WHT",
+              options: { "Размер": "S", "Өнгө": "Цагаан" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "M / Black",
-              sku: "SHIRT-M-BLACK",
-              options: {
-                Size: "M",
-                Color: "Black",
-              },
+              title: "M / Хар",
+              sku: "TS-M-BLK",
+              options: { "Размер": "M", "Өнгө": "Хар" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "M / White",
-              sku: "SHIRT-M-WHITE",
-              options: {
-                Size: "M",
-                Color: "White",
-              },
+              title: "M / Цагаан",
+              sku: "TS-M-WHT",
+              options: { "Размер": "M", "Өнгө": "Цагаан" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "L / Black",
-              sku: "SHIRT-L-BLACK",
-              options: {
-                Size: "L",
-                Color: "Black",
-              },
+              title: "L / Хар",
+              sku: "TS-L-BLK",
+              options: { "Размер": "L", "Өнгө": "Хар" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "L / White",
-              sku: "SHIRT-L-WHITE",
-              options: {
-                Size: "L",
-                Color: "White",
-              },
+              title: "L / Цагаан",
+              sku: "TS-L-WHT",
+              options: { "Размер": "L", "Өнгө": "Цагаан" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "XL / Black",
-              sku: "SHIRT-XL-BLACK",
-              options: {
-                Size: "XL",
-                Color: "Black",
-              },
+              title: "XL / Хар",
+              sku: "TS-XL-BLK",
+              options: { "Размер": "XL", "Өнгө": "Хар" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
             {
-              title: "XL / White",
-              sku: "SHIRT-XL-WHITE",
-              options: {
-                Size: "XL",
-                Color: "White",
-              },
+              title: "XL / Цагаан",
+              sku: "TS-XL-WHT",
+              options: { "Размер": "XL", "Өнгө": "Цагаан" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 35000, currency_code: "mnt" },
+                { amount: 15000, currency_code: "krw" },
               ],
             },
           ],
-          sales_channels: [
-            {
-              id: defaultSalesChannel[0].id,
-            },
-          ],
+          sales_channels: [{ id: defaultSalesChannel[0].id }],
         },
         {
-          title: "Medusa Sweatshirt",
+          title: "Хүрэм",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Sweatshirts")!.id,
+            categoryResult.find((cat) => cat.name === "Хүрэм")!.id,
           ],
-          description:
-            "Reimagine the feeling of a classic sweatshirt. With our cotton sweatshirt, everyday essentials no longer have to be ordinary.",
+          description: "Дулаахан хүрэм.",
           handle: "sweatshirt",
           weight: 400,
           status: ProductStatus.PUBLISHED,
@@ -602,99 +512,59 @@ export default async function seedDemoData({ container }: ExecArgs) {
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatshirt-vintage-front.png",
             },
-            {
-              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatshirt-vintage-back.png",
-            },
           ],
           options: [
             {
-              title: "Size",
+              title: "Размер",
               values: ["S", "M", "L", "XL"],
             },
           ],
           variants: [
             {
               title: "S",
-              sku: "SWEATSHIRT-S",
-              options: {
-                Size: "S",
-              },
+              sku: "SW-S",
+              options: { "Размер": "S" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 65000, currency_code: "mnt" },
+                { amount: 28000, currency_code: "krw" },
               ],
             },
             {
               title: "M",
-              sku: "SWEATSHIRT-M",
-              options: {
-                Size: "M",
-              },
+              sku: "SW-M",
+              options: { "Размер": "M" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 65000, currency_code: "mnt" },
+                { amount: 28000, currency_code: "krw" },
               ],
             },
             {
               title: "L",
-              sku: "SWEATSHIRT-L",
-              options: {
-                Size: "L",
-              },
+              sku: "SW-L",
+              options: { "Размер": "L" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 65000, currency_code: "mnt" },
+                { amount: 28000, currency_code: "krw" },
               ],
             },
             {
               title: "XL",
-              sku: "SWEATSHIRT-XL",
-              options: {
-                Size: "XL",
-              },
+              sku: "SW-XL",
+              options: { "Размер": "XL" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 65000, currency_code: "mnt" },
+                { amount: 28000, currency_code: "krw" },
               ],
             },
           ],
-          sales_channels: [
-            {
-              id: defaultSalesChannel[0].id,
-            },
-          ],
+          sales_channels: [{ id: defaultSalesChannel[0].id }],
         },
         {
-          title: "Medusa Sweatpants",
+          title: "Өмд",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Pants")!.id,
+            categoryResult.find((cat) => cat.name === "Өмд")!.id,
           ],
-          description:
-            "Reimagine the feeling of classic sweatpants. With our cotton sweatpants, everyday essentials no longer have to be ordinary.",
+          description: "Тав тухтай өмд.",
           handle: "sweatpants",
           weight: 400,
           status: ProductStatus.PUBLISHED,
@@ -703,99 +573,59 @@ export default async function seedDemoData({ container }: ExecArgs) {
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatpants-gray-front.png",
             },
-            {
-              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/sweatpants-gray-back.png",
-            },
           ],
           options: [
             {
-              title: "Size",
+              title: "Размер",
               values: ["S", "M", "L", "XL"],
             },
           ],
           variants: [
             {
               title: "S",
-              sku: "SWEATPANTS-S",
-              options: {
-                Size: "S",
-              },
+              sku: "PT-S",
+              options: { "Размер": "S" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 55000, currency_code: "mnt" },
+                { amount: 24000, currency_code: "krw" },
               ],
             },
             {
               title: "M",
-              sku: "SWEATPANTS-M",
-              options: {
-                Size: "M",
-              },
+              sku: "PT-M",
+              options: { "Размер": "M" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 55000, currency_code: "mnt" },
+                { amount: 24000, currency_code: "krw" },
               ],
             },
             {
               title: "L",
-              sku: "SWEATPANTS-L",
-              options: {
-                Size: "L",
-              },
+              sku: "PT-L",
+              options: { "Размер": "L" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 55000, currency_code: "mnt" },
+                { amount: 24000, currency_code: "krw" },
               ],
             },
             {
               title: "XL",
-              sku: "SWEATPANTS-XL",
-              options: {
-                Size: "XL",
-              },
+              sku: "PT-XL",
+              options: { "Размер": "XL" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 55000, currency_code: "mnt" },
+                { amount: 24000, currency_code: "krw" },
               ],
             },
           ],
-          sales_channels: [
-            {
-              id: defaultSalesChannel[0].id,
-            },
-          ],
+          sales_channels: [{ id: defaultSalesChannel[0].id }],
         },
         {
-          title: "Medusa Shorts",
+          title: "Богино өмд",
           category_ids: [
-            categoryResult.find((cat) => cat.name === "Merch")!.id,
+            categoryResult.find((cat) => cat.name === "Бусад")!.id,
           ],
-          description:
-            "Reimagine the feeling of classic shorts. With our cotton shorts, everyday essentials no longer have to be ordinary.",
+          description: "Зуны богино өмд.",
           handle: "shorts",
           weight: 400,
           status: ProductStatus.PUBLISHED,
@@ -804,91 +634,52 @@ export default async function seedDemoData({ container }: ExecArgs) {
             {
               url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/shorts-vintage-front.png",
             },
-            {
-              url: "https://medusa-public-images.s3.eu-west-1.amazonaws.com/shorts-vintage-back.png",
-            },
           ],
           options: [
             {
-              title: "Size",
+              title: "Размер",
               values: ["S", "M", "L", "XL"],
             },
           ],
           variants: [
             {
               title: "S",
-              sku: "SHORTS-S",
-              options: {
-                Size: "S",
-              },
+              sku: "SH-S",
+              options: { "Размер": "S" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 45000, currency_code: "mnt" },
+                { amount: 20000, currency_code: "krw" },
               ],
             },
             {
               title: "M",
-              sku: "SHORTS-M",
-              options: {
-                Size: "M",
-              },
+              sku: "SH-M",
+              options: { "Размер": "M" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 45000, currency_code: "mnt" },
+                { amount: 20000, currency_code: "krw" },
               ],
             },
             {
               title: "L",
-              sku: "SHORTS-L",
-              options: {
-                Size: "L",
-              },
+              sku: "SH-L",
+              options: { "Размер": "L" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 45000, currency_code: "mnt" },
+                { amount: 20000, currency_code: "krw" },
               ],
             },
             {
               title: "XL",
-              sku: "SHORTS-XL",
-              options: {
-                Size: "XL",
-              },
+              sku: "SH-XL",
+              options: { "Размер": "XL" },
               prices: [
-                {
-                  amount: 10,
-                  currency_code: "eur",
-                },
-                {
-                  amount: 15,
-                  currency_code: "usd",
-                },
+                { amount: 45000, currency_code: "mnt" },
+                { amount: 20000, currency_code: "krw" },
               ],
             },
           ],
-          sales_channels: [
-            {
-              id: defaultSalesChannel[0].id,
-            },
-          ],
+          sales_channels: [{ id: defaultSalesChannel[0].id }],
         },
       ],
     },

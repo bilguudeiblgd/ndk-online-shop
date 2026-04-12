@@ -9,14 +9,18 @@ export type TransactionStatus =
   | "Дүн таарахгүй"
   | "Бусад"
 
-export interface Product {
-  name: string
+export interface VariantFilter {
+  variantId: string
+  productTitle: string
+  variantTitle: string
   price: number
-  code?: string
+  codes: string[] // multiple keywords (cyrillic/latin)
 }
 
 export interface TransactionMatch {
-  product: string
+  variantId: string
+  productTitle: string
+  variantTitle: string
   quantity: number
   subtotal: number
 }
@@ -44,14 +48,18 @@ export interface ColumnMapping {
 }
 
 export interface FilterParams {
-  products: Product[]
+  variants: VariantFilter[]
   sheet?: number
   columns?: ColumnMapping
   startRow?: number
+  dateFrom?: string  // "YYYY-MM-DD"
+  dateTo?: string    // "YYYY-MM-DD"
 }
 
-export interface ProductStats {
-  name: string
+export interface VariantStats {
+  variantId: string
+  productTitle: string
+  variantTitle: string
   price: number
   matchedCount: number
   totalQuantity: number
@@ -65,7 +73,7 @@ export interface FilterResult {
   noMatch: Transaction[]
   total: number
   acceptedCount: number
-  productStats: ProductStats[]
+  variantStats: VariantStats[]
 }
 
 function parseNumber(val: unknown): number {
@@ -85,55 +93,64 @@ const MAX_ATTEMPTS = 50000
 
 function findMatches(
   amount: number,
-  products: Product[],
+  variants: VariantFilter[],
   message: string
 ): TransactionMatch[] | null {
   const msgLower = message.toLowerCase()
 
-  // 1. Code-based: prefer products whose code appears in the message
-  const codeProducts = products.filter(
-    (p) => p.code && msgLower.includes(p.code.toLowerCase())
+  // 1. Code-based: prefer variants whose code appears in the message
+  const codeVariants = variants.filter((v) =>
+    v.codes.some((c) => msgLower.includes(c.toLowerCase()))
   )
-  if (codeProducts.length > 0) {
-    const result = solveAmount(amount, codeProducts)
+  if (codeVariants.length > 0) {
+    const result = solveAmount(amount, codeVariants)
     if (result) return result
   }
 
-  // 2. Try all products
-  return solveAmount(amount, products)
+  // 2. Try all variants
+  return solveAmount(amount, variants)
 }
 
 function solveAmount(
   target: number,
-  products: Product[]
+  variants: VariantFilter[]
 ): TransactionMatch[] | null {
   const targetInt = Math.round(target)
   if (targetInt <= 0) return null
 
-  // Fast path: single product × quantity
-  for (const p of products) {
-    const priceInt = Math.round(p.price)
+  // Fast path: single variant × quantity
+  for (const v of variants) {
+    const priceInt = Math.round(v.price)
     if (priceInt <= 0) continue
     if (targetInt % priceInt === 0) {
       const qty = targetInt / priceInt
       if (qty >= 1 && qty <= MAX_QTY) {
-        return [{ product: p.name, quantity: qty, subtotal: targetInt }]
+        return [
+          {
+            variantId: v.variantId,
+            productTitle: v.productTitle,
+            variantTitle: v.variantTitle,
+            quantity: qty,
+            subtotal: targetInt,
+          },
+        ]
       }
     }
   }
 
-  // Multi-product combination (bounded subset sum)
-  if (products.length >= 2) {
+  // Multi-variant combination (bounded subset sum)
+  if (variants.length >= 2) {
     let attempts = 0
     const solve = (
       remaining: number,
       idx: number
     ): TransactionMatch[] | null => {
       if (remaining === 0) return []
-      if (remaining < 0 || idx >= products.length) return null
+      if (remaining < 0 || idx >= variants.length) return null
       if (++attempts > MAX_ATTEMPTS) return null
 
-      const priceInt = Math.round(products[idx].price)
+      const v = variants[idx]
+      const priceInt = Math.round(v.price)
       if (priceInt <= 0) return solve(remaining, idx + 1)
 
       const maxQ = Math.min(MAX_QTY, Math.floor(remaining / priceInt))
@@ -143,7 +160,13 @@ function solveAmount(
         if (rest !== null) {
           return qty > 0
             ? [
-                { product: products[idx].name, quantity: qty, subtotal: sub },
+                {
+                  variantId: v.variantId,
+                  productTitle: v.productTitle,
+                  variantTitle: v.variantTitle,
+                  quantity: qty,
+                  subtotal: sub,
+                },
                 ...rest,
               ]
             : rest
@@ -159,7 +182,12 @@ function solveAmount(
 }
 
 function formatMatchLabel(matches: TransactionMatch[]): string {
-  return matches.map((m) => `${m.product} ×${m.quantity}`).join(", ")
+  return matches
+    .map((m) => {
+      const label = m.variantTitle ? `${m.productTitle} (${m.variantTitle})` : m.productTitle
+      return `${label} ×${m.quantity}`
+    })
+    .join(", ")
 }
 
 // --- Main ---
@@ -178,8 +206,8 @@ export async function filterTransactions(
       `Хуудас [${sheetIndex}] олдсонгүй (нийт ${workbook.worksheets.length} хуудас)`
     )
 
-  if (!params.products.length)
-    throw new Error("Бүтээгдэхүүн нэмнэ үү")
+  if (!params.variants.length)
+    throw new Error("Бүтээгдэхүүн сонгоно уу")
 
   // Build column map: manual or auto-detect
   let dataStartRow: number
@@ -189,40 +217,37 @@ export async function filterTransactions(
     return letter.toUpperCase().charCodeAt(0) - 64
   }
 
-  if (params.columns && params.columns.credit) {
+  if (params.columns) {
+    // Manual column mapping
     for (const [key, letter] of Object.entries(params.columns)) {
       if (letter) colMap[key] = colLetterToNum(letter)
     }
     dataStartRow = params.startRow ?? 1
   } else {
-    let headerRow = -1
-    sheet.eachRow((row, rowNumber) => {
-      if (headerRow > 0) return
-      row.eachCell((cell) => {
-        const val = String(cell.value || "").toLowerCase()
-        if (val.includes("гүйлгээний огноо")) {
-          headerRow = rowNumber
-        }
-      })
-      if (headerRow === rowNumber) {
-        row.eachCell((cell, colNumber) => {
-          const val = String(cell.value || "").toLowerCase()
-          if (val.includes("огноо")) colMap.date = colNumber
-          if (val.includes("салбар")) colMap.branch = colNumber
-          if (val.includes("кредит")) colMap.credit = colNumber
-          if (val.includes("эцсийн")) colMap.balance = colNumber
-          if (val.includes("утга")) colMap.message = colNumber
-          if (val.includes("харьцсан")) colMap.account = colNumber
-        })
-      }
-    })
+    // Default: A=date, B=amount, C=message, D=account
+    colMap.date = 1    // A
+    colMap.credit = 2  // B
+    colMap.message = 3 // C
+    colMap.account = 4 // D
+    dataStartRow = params.startRow ?? 1
+  }
 
-    if (headerRow < 0) {
-      throw new Error(
-        "Толгой мөр олдсонгүй ('Гүйлгээний огноо' агуулсан мөр). Баганы тохиргоог гараар сонгоно уу."
-      )
+  // Date filter bounds
+  const dateFromMs = params.dateFrom ? new Date(params.dateFrom).getTime() : null
+  const dateToMs = params.dateTo
+    ? new Date(params.dateTo).getTime() + 86400000 - 1 // end of day
+    : null
+
+  function parseDateVal(col: number | undefined, row: ExcelJS.Row): { str: string; ms: number | null } {
+    if (!col) return { str: "", ms: null }
+    const raw = row.getCell(col).value
+    if (raw instanceof Date) {
+      return { str: raw.toISOString().slice(0, 10), ms: raw.getTime() }
     }
-    dataStartRow = headerRow + 1
+    const str = String(raw ?? "").trim()
+    if (!str) return { str: "", ms: null }
+    const t = new Date(str).getTime()
+    return { str, ms: isNaN(t) ? null : t }
   }
 
   // Parse transactions
@@ -240,6 +265,13 @@ export async function filterTransactions(
       return parseNumber(row.getCell(col).value)
     }
 
+    // Date filter
+    const dateInfo = parseDateVal(colMap.date, row)
+    if (dateInfo.ms !== null) {
+      if (dateFromMs !== null && dateInfo.ms < dateFromMs) return
+      if (dateToMs !== null && dateInfo.ms > dateToMs) return
+    }
+
     const credit = getNum(colMap.credit)
     if (credit <= 0) return
 
@@ -247,7 +279,7 @@ export async function filterTransactions(
     const phoneMatch = phoneRegex.exec(message)
     const phone = phoneMatch ? phoneMatch[1] : ""
 
-    const matches = findMatches(credit, params.products, message)
+    const matches = findMatches(credit, params.variants, message)
     const hasPhone = phone !== ""
     const hasMatch = matches !== null && matches.length > 0
 
@@ -258,7 +290,7 @@ export async function filterTransactions(
     else status = "Бусад"
 
     transactions.push({
-      date: getVal(colMap.date),
+      date: dateInfo.str,
       branch: getVal(colMap.branch),
       amount: credit,
       balance: getVal(colMap.balance),
@@ -279,15 +311,16 @@ export async function filterTransactions(
     noMatch: [],
     total: transactions.length,
     acceptedCount: 0,
-    productStats: [],
+    variantStats: [],
   }
 
-  // Per-product stats accumulator
-  const statsMap = new Map<string, ProductStats>()
-  for (const p of params.products) {
-    statsMap.set(p.name, {
-      name: p.name,
-      price: p.price,
+  const statsMap = new Map<string, VariantStats>()
+  for (const v of params.variants) {
+    statsMap.set(v.variantId, {
+      variantId: v.variantId,
+      productTitle: v.productTitle,
+      variantTitle: v.variantTitle,
+      price: v.price,
       matchedCount: 0,
       totalQuantity: 0,
       totalRevenue: 0,
@@ -299,9 +332,8 @@ export async function filterTransactions(
       case "Зөв":
         result.accepted.push(t)
         result.acceptedCount++
-        // Update per-product stats from accepted transactions
         for (const m of t.matches) {
-          const s = statsMap.get(m.product)
+          const s = statsMap.get(m.variantId)
           if (s) {
             s.matchedCount++
             s.totalQuantity += m.quantity
@@ -320,7 +352,7 @@ export async function filterTransactions(
     }
   }
 
-  result.productStats = Array.from(statsMap.values())
+  result.variantStats = Array.from(statsMap.values())
 
   const output = await generateOutput(result, params)
   return { result, output }
@@ -330,7 +362,7 @@ export async function filterTransactions(
 
 async function generateOutput(
   result: FilterResult,
-  params: FilterParams
+  _params: FilterParams
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook()
   const headers = [
@@ -354,11 +386,7 @@ async function generateOutput(
     size: 11,
   }
 
-  function addSheet(
-    name: string,
-    txns: Transaction[],
-    fillColor: string
-  ) {
+  function addSheet(name: string, txns: Transaction[], fillColor: string) {
     const ws = wb.addWorksheet(name)
     const hRow = ws.addRow(headers)
     hRow.eachCell((cell) => {
@@ -402,8 +430,7 @@ async function generateOutput(
     addSheet("Дүн таарахгүй", result.badAmount, "FFFFC7CE")
   if (result.badPhone.length)
     addSheet("Утас олдсонгүй", result.badPhone, "FFFFC7CE")
-  if (result.noMatch.length)
-    addSheet("Бусад", result.noMatch, "FFD9D9D9")
+  if (result.noMatch.length) addSheet("Бусад", result.noMatch, "FFD9D9D9")
 
   // Summary sheet
   const summary = wb.addWorksheet("Нэгтгэл")
@@ -430,28 +457,31 @@ async function generateOutput(
   write("B", result.noMatch.length)
   row += 2
 
-  // Per-product stats table
+  // Per-variant stats table
   write("A", "Бүтээгдэхүүн", true)
-  write("B", "Үнэ", true)
-  write("C", "Зөв захиалга", true)
-  write("D", "Нийт ширхэг", true)
-  write("E", "Нийт орлого", true)
+  write("B", "Хувилбар", true)
+  write("C", "Үнэ", true)
+  write("D", "Зөв захиалга", true)
+  write("E", "Нийт ширхэг", true)
+  write("F", "Нийт орлого", true)
   row++
 
-  for (const s of result.productStats) {
-    write("A", s.name)
-    write("B", s.price)
-    write("C", s.matchedCount)
-    write("D", s.totalQuantity)
-    write("E", s.totalRevenue)
+  for (const s of result.variantStats) {
+    write("A", s.productTitle)
+    write("B", s.variantTitle)
+    write("C", s.price)
+    write("D", s.matchedCount)
+    write("E", s.totalQuantity)
+    write("F", s.totalRevenue)
     row++
   }
 
   summary.getColumn(1).width = 25
-  summary.getColumn(2).width = 15
+  summary.getColumn(2).width = 20
   summary.getColumn(3).width = 15
   summary.getColumn(4).width = 15
-  summary.getColumn(5).width = 18
+  summary.getColumn(5).width = 15
+  summary.getColumn(6).width = 18
 
   const buf = await wb.xlsx.writeBuffer()
   return Buffer.from(buf)
