@@ -21,9 +21,7 @@ services:
       - medusa_network
 
   medusa:
-    build:
-      context: ./medusa
-      dockerfile: Dockerfile.prod
+    image: medusa-prod
     container_name: medusa_backend
     restart: always
     depends_on:
