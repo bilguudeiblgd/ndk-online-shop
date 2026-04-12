@@ -2,13 +2,12 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: medusa_postgres
-    restart: unless-stopped
+    restart: always
+    env_file: .env.prod
     environment:
       POSTGRES_DB: medusa-store
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -17,31 +16,26 @@ services:
   redis:
     image: redis:7-alpine
     container_name: medusa_redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
+    restart: always
     networks:
       - medusa_network
 
   medusa:
-    build: ./medusa
+    build:
+      context: ./medusa
+      dockerfile: Dockerfile.prod
     container_name: medusa_backend
-    restart: unless-stopped
+    restart: always
     depends_on:
       - postgres
       - redis
     ports:
       - "9000:9000"
-      - "5173:5173"
+    env_file: .env.prod
     environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgres://postgres:${DB_PASSWORD:-postgres}@postgres:5432/medusa-store
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://postgres:${DB_PASSWORD}@postgres:5432/medusa-store
       - REDIS_URL=redis://redis:6379
-    env_file:
-      - ./medusa/.env
-    volumes:
-      - ./medusa:/server
-      - /server/node_modules
     networks:
       - medusa_network
 
