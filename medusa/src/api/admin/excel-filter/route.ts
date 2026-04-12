@@ -1,10 +1,9 @@
 import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { filterTransactions, FilterMode } from "../../../lib/excel-filter"
+import { filterTransactions, ColumnMapping, Product } from "../../../lib/excel-filter"
 import multer from "multer"
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
-// Wrap multer for use in Medusa route
 function parseMultipart(req: any, res: any): Promise<void> {
   return new Promise((resolve, reject) => {
     upload.single("file")(req, res, (err: any) => {
@@ -26,44 +25,65 @@ export async function POST(
     return
   }
 
-  const price = parseFloat((req.body as any).price)
-  if (!price || price <= 0) {
-    res.status(400).json({ error: "зөв үнэ оруулна уу" })
+  const body = req.body as any
+
+  // Parse products
+  let products: Product[] = []
+  try {
+    products = JSON.parse(body.products || "[]")
+  } catch {
+    res.status(400).json({ error: "бүтээгдэхүүний мэдээлэл буруу" })
     return
   }
 
-  const mode: FilterMode = (req.body as any).mode || "price"
-  const code: string = (req.body as any).code || ""
-
-  if (mode === "price_code" && !code) {
-    res.status(400).json({ error: "код оруулна уу" })
+  if (!products.length || !products.every((p) => p.name && p.price > 0)) {
+    res.status(400).json({ error: "бүтээгдэхүүн нэмнэ үү (нэр + үнэ)" })
     return
   }
+
+  const sheet: number = parseInt(body.sheet ?? "0", 10)
+
+  // Manual column mapping (optional)
+  const columns: ColumnMapping | undefined = body.col_credit
+    ? {
+        date: body.col_date || undefined,
+        branch: body.col_branch || undefined,
+        credit: body.col_credit || undefined,
+        balance: body.col_balance || undefined,
+        message: body.col_message || undefined,
+        account: body.col_account || undefined,
+      }
+    : undefined
+  const startRow: number | undefined = body.startRow
+    ? parseInt(body.startRow, 10)
+    : undefined
 
   const logger = req.scope.resolve("logger")
-  logger.info(`[excel] файл: ${file.originalname}, үнэ: ${price}₮, горим: ${mode}`)
+  logger.info(
+    `[excel] файл: ${file.originalname}, бүтээгдэхүүн: ${products.length}, хуудас: ${sheet}`
+  )
 
   try {
     const { result, output } = await filterTransactions(file.buffer, {
-      price,
-      mode,
-      code,
+      products,
+      sheet,
+      columns,
+      startRow,
     })
 
     logger.info(
       `[excel] нийт: ${result.total}, зөв: ${result.acceptedCount}, дүн буруу: ${result.badAmount.length}, утас байхгүй: ${result.badPhone.length}`
     )
 
-    // JSON summary or file download
     const format = req.query.format as string
     if (format === "json") {
       res.json({
         total: result.total,
         accepted: result.acceptedCount,
         badAmount: result.badAmount.length,
-        badCode: result.badCode.length,
         badPhone: result.badPhone.length,
         noMatch: result.noMatch.length,
+        productStats: result.productStats,
       })
       return
     }

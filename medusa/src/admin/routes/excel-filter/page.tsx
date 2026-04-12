@@ -1,65 +1,129 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk"
 import { Container, Heading, Text, Button, Input, Label, toast } from "@medusajs/ui"
 import { useState, useRef } from "react"
-import { sdk } from "../../lib/client"
 
-type FilterMode = "price" | "price_code"
+type ColumnMode = "auto" | "manual"
+
+const COLUMNS = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
+
+const COLUMN_FIELDS = [
+  { key: "credit", label: "Кредит / Дүн", required: true },
+  { key: "message", label: "Гүйлгээний утга", required: true },
+  { key: "account", label: "Харьцсан данс", required: true },
+  { key: "date", label: "Огноо", required: false },
+  { key: "balance", label: "Эцсийн үлдэгдэл", required: false },
+  { key: "branch", label: "Салбар", required: false },
+] as const
+
+interface ProductInput {
+  name: string
+  price: string
+  code: string
+}
+
+interface ProductStat {
+  name: string
+  price: number
+  matchedCount: number
+  totalQuantity: number
+  totalRevenue: number
+}
 
 interface FilterSummary {
   total: number
   accepted: number
   badAmount: number
-  badCode: number
   badPhone: number
   noMatch: number
+  productStats: ProductStat[]
 }
 
 const ExcelFilterPage = () => {
   const [file, setFile] = useState<File | null>(null)
-  const [price, setPrice] = useState("")
-  const [mode, setMode] = useState<FilterMode>("price")
-  const [code, setCode] = useState("")
+  const [sheet, setSheet] = useState("0")
+  const [columnMode, setColumnMode] = useState<ColumnMode>("auto")
+  const [colMap, setColMap] = useState<Record<string, string>>({
+    credit: "", message: "", account: "", date: "", balance: "", branch: "",
+  })
+  const [startRow, setStartRow] = useState("1")
+  const [products, setProducts] = useState<ProductInput[]>([
+    { name: "", price: "", code: "" },
+  ])
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<FilterSummary | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  function addProduct() {
+    setProducts([...products, { name: "", price: "", code: "" }])
+  }
+
+  function removeProduct(index: number) {
+    setProducts(products.filter((_, i) => i !== index))
+  }
+
+  function updateProduct(index: number, field: keyof ProductInput, value: string) {
+    setProducts(products.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+  }
+
+  function getValidProducts() {
+    return products
+      .filter((p) => p.name.trim() && p.price.trim() && parseFloat(p.price) > 0)
+      .map((p) => ({
+        name: p.name.trim(),
+        price: parseFloat(p.price),
+        code: p.code.trim() || undefined,
+      }))
+  }
+
+  function buildFormData() {
+    const fd = new FormData()
+    fd.append("file", file!)
+    fd.append("sheet", sheet)
+    fd.append("products", JSON.stringify(getValidProducts()))
+    if (columnMode === "manual") {
+      for (const [key, val] of Object.entries(colMap)) {
+        if (val) fd.append(`col_${key}`, val)
+      }
+      fd.append("startRow", startRow)
+    }
+    return fd
+  }
+
   async function handleFilter() {
-    if (!file || !price) return
-    if (mode === "price_code" && !code) {
-      toast.error("Код оруулна уу")
+    if (!file) return
+
+    const valid = getValidProducts()
+    if (!valid.length) {
+      toast.error("Бүтээгдэхүүн нэмнэ үү (нэр + үнэ)")
       return
+    }
+
+    if (columnMode === "manual") {
+      const missing = COLUMN_FIELDS
+        .filter((f) => f.required && !colMap[f.key])
+        .map((f) => f.label)
+      if (missing.length) {
+        toast.error(`${missing.join(", ")} багана заавал сонгоно уу`)
+        return
+      }
     }
 
     setLoading(true)
     setSummary(null)
 
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("price", price)
-    formData.append("mode", mode)
-    if (mode === "price_code") formData.append("code", code)
-
     try {
-      // Get summary
       const summaryRes = await fetch("/admin/excel-filter?format=json", {
         method: "POST",
-        body: formData,
+        body: buildFormData(),
         credentials: "include",
       })
       if (!summaryRes.ok) throw new Error(await summaryRes.text())
       const summaryData = await summaryRes.json()
       setSummary(summaryData)
 
-      // Download file
-      const formData2 = new FormData()
-      formData2.append("file", file)
-      formData2.append("price", price)
-      formData2.append("mode", mode)
-      if (mode === "price_code") formData2.append("code", code)
-
       const fileRes = await fetch("/admin/excel-filter", {
         method: "POST",
-        body: formData2,
+        body: buildFormData(),
         credentials: "include",
       })
       if (!fileRes.ok) throw new Error(await fileRes.text())
@@ -82,8 +146,11 @@ const ExcelFilterPage = () => {
 
   function handleReset() {
     setFile(null)
-    setPrice("")
-    setCode("")
+    setSheet("0")
+    setColumnMode("auto")
+    setColMap({ credit: "", message: "", account: "", date: "", balance: "", branch: "" })
+    setStartRow("1")
+    setProducts([{ name: "", price: "", code: "" }])
     setSummary(null)
     if (fileRef.current) fileRef.current.value = ""
   }
@@ -100,32 +167,6 @@ const ExcelFilterPage = () => {
       <div className="max-w-2xl flex flex-col gap-6">
         <Container>
           <div className="flex flex-col gap-5">
-            {/* Mode toggle */}
-            <div>
-              <Label className="mb-2 block">Горим</Label>
-              <div className="flex gap-2">
-                <Button
-                  size="small"
-                  variant={mode === "price" ? "primary" : "secondary"}
-                  onClick={() => setMode("price")}
-                >
-                  Зөвхөн үнэ
-                </Button>
-                <Button
-                  size="small"
-                  variant={mode === "price_code" ? "primary" : "secondary"}
-                  onClick={() => setMode("price_code")}
-                >
-                  Үнэ + Код
-                </Button>
-              </div>
-              <Text size="small" className="text-ui-fg-muted mt-1">
-                {mode === "price"
-                  ? "Утасны дугаар + дүн таарвал зөв"
-                  : "Утасны дугаар + дүн + код бүгд таарвал зөв"}
-              </Text>
-            </div>
-
             {/* File */}
             <div>
               <Label className="mb-1.5 block">Гүйлгээний файл (XLSX)</Label>
@@ -138,63 +179,200 @@ const ExcelFilterPage = () => {
               />
             </div>
 
-            {/* Price */}
+            {/* Sheet index */}
             <div>
-              <Label className="mb-1.5 block">Бүтээгдэхүүний үнэ (₮)</Label>
+              <Label className="mb-1.5 block">Хуудасны дугаар (0-ээс эхэлнэ)</Label>
               <Input
                 type="number"
-                placeholder="25000"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0"
+                value={sheet}
+                onChange={(e) => setSheet(e.target.value)}
               />
             </div>
 
-            {/* Code */}
-            {mode === "price_code" && (
-              <div>
-                <Label className="mb-1.5 block">Код (гүйлгээний утганд агуулагдах)</Label>
-                <Input
-                  placeholder="Жишээ: LS001"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                />
+            {/* Column mapping mode */}
+            <div>
+              <Label className="mb-2 block">Баганы тохиргоо</Label>
+              <div className="flex gap-2">
+                <Button
+                  size="small"
+                  variant={columnMode === "auto" ? "primary" : "secondary"}
+                  onClick={() => setColumnMode("auto")}
+                >
+                  Автомат
+                </Button>
+                <Button
+                  size="small"
+                  variant={columnMode === "manual" ? "primary" : "secondary"}
+                  onClick={() => setColumnMode("manual")}
+                >
+                  Гараар
+                </Button>
+              </div>
+              <Text size="small" className="text-ui-fg-muted mt-1">
+                {columnMode === "auto"
+                  ? "Толгой мөрөөс автоматаар таних"
+                  : "Багана бүрийг гараар сонгох (толгой мөргүй файлд тохиромжтой)"}
+              </Text>
+            </div>
+
+            {/* Manual column mapping */}
+            {columnMode === "manual" && (
+              <div className="border border-ui-border-base rounded-lg p-4 flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  {COLUMN_FIELDS.map((f) => (
+                    <div key={f.key}>
+                      <Label className="mb-1 block text-xs">
+                        {f.label}{f.required && " *"}
+                      </Label>
+                      <select
+                        value={colMap[f.key] || ""}
+                        onChange={(e) => setColMap((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        className="w-full border border-ui-border-base rounded-lg px-3 py-2 text-sm bg-ui-bg-field"
+                      >
+                        <option value="">--</option>
+                        {COLUMNS.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">Мэдээлэл эхлэх мөр (1-ээс эхэлнэ)</Label>
+                  <Input
+                    type="number"
+                    placeholder="1"
+                    value={startRow}
+                    onChange={(e) => setStartRow(e.target.value)}
+                  />
+                </div>
               </div>
             )}
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button
-                onClick={handleFilter}
-                disabled={loading || !file || !price || (mode === "price_code" && !code)}
-                isLoading={loading}
-              >
-                Шүүх
-              </Button>
-              {summary && (
-                <Button variant="secondary" onClick={handleReset}>
-                  Цэвэрлэх
-                </Button>
-              )}
-            </div>
           </div>
         </Container>
+
+        {/* Products */}
+        <Container>
+          <div className="flex items-center justify-between mb-4">
+            <Text size="small" weight="plus" leading="compact">
+              Бүтээгдэхүүн
+            </Text>
+            <Button size="small" variant="secondary" onClick={addProduct}>
+              + Нэмэх
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {/* Column labels */}
+            <div className="grid grid-cols-[1fr_100px_100px_32px] gap-2 px-1">
+              <Text size="xsmall" className="text-ui-fg-muted">Нэр *</Text>
+              <Text size="xsmall" className="text-ui-fg-muted">Үнэ *</Text>
+              <Text size="xsmall" className="text-ui-fg-muted">Код</Text>
+              <div />
+            </div>
+
+            {products.map((p, i) => (
+              <div key={i} className="grid grid-cols-[1fr_100px_100px_32px] gap-2 items-center">
+                <Input
+                  size="small"
+                  placeholder="Бүтээгдэхүүн"
+                  value={p.name}
+                  onChange={(e) => updateProduct(i, "name", e.target.value)}
+                />
+                <Input
+                  size="small"
+                  type="number"
+                  placeholder="₮"
+                  value={p.price}
+                  onChange={(e) => updateProduct(i, "price", e.target.value)}
+                />
+                <Input
+                  size="small"
+                  placeholder="--"
+                  value={p.code}
+                  onChange={(e) => updateProduct(i, "code", e.target.value)}
+                />
+                {products.length > 1 ? (
+                  <button
+                    onClick={() => removeProduct(i)}
+                    className="text-ui-fg-muted hover:text-ui-fg-base text-lg leading-none"
+                  >
+                    x
+                  </button>
+                ) : <div />}
+              </div>
+            ))}
+          </div>
+
+          <Text size="xsmall" className="text-ui-fg-muted mt-3">
+            Код заавал биш. Гүйлгээний утганд код олдвол тухайн бүтээгдэхүүнд эхлээд таарна. 1 гүйлгээнд олон ширхэг (×2, ×3) эсвэл өөр бүтээгдэхүүний хослол бас таарна.
+          </Text>
+        </Container>
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Button
+            onClick={handleFilter}
+            disabled={loading || !file || !getValidProducts().length}
+            isLoading={loading}
+          >
+            Шүүх
+          </Button>
+          {summary && (
+            <Button variant="secondary" onClick={handleReset}>
+              Цэвэрлэх
+            </Button>
+          )}
+        </div>
 
         {/* Results */}
         {summary && (
           <Container>
             <Text size="small" weight="plus" leading="compact" className="mb-4">Үр дүн</Text>
-            <div className={`grid gap-3 ${mode === "price_code" ? "grid-cols-3" : "grid-cols-2"} lg:${mode === "price_code" ? "grid-cols-6" : "grid-cols-4"}`}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               <StatCard value={summary.total} label="Нийт" />
               <StatCard value={summary.accepted} label="Зөв" color="green" />
               <StatCard value={summary.badAmount} label="Дүн таарахгүй" color="red" />
-              {mode === "price_code" && (
-                <StatCard value={summary.badCode} label="Код олдсонгүй" color="orange" />
-              )}
               <StatCard value={summary.badPhone} label="Утас олдсонгүй" color="orange" />
               {summary.noMatch > 0 && (
                 <StatCard value={summary.noMatch} label="Бусад" />
               )}
             </div>
+
+            {/* Per-product stats */}
+            {summary.productStats && summary.productStats.length > 0 && (
+              <div>
+                <Text size="xsmall" weight="plus" className="text-ui-fg-muted mb-2">
+                  Бүтээгдэхүүн тус бүрийн тоо (зөв захиалга)
+                </Text>
+                <div className="border border-ui-border-base rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-ui-bg-subtle border-b border-ui-border-base">
+                        <th className="text-left px-3 py-2 font-medium">Нэр</th>
+                        <th className="text-right px-3 py-2 font-medium">Үнэ</th>
+                        <th className="text-right px-3 py-2 font-medium">Захиалга</th>
+                        <th className="text-right px-3 py-2 font-medium">Ширхэг</th>
+                        <th className="text-right px-3 py-2 font-medium">Орлого</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.productStats.map((s, i) => (
+                        <tr key={i} className="border-b border-ui-border-base last:border-0">
+                          <td className="px-3 py-2">{s.name}</td>
+                          <td className="px-3 py-2 text-right">{s.price.toLocaleString()}₮</td>
+                          <td className="px-3 py-2 text-right">{s.matchedCount}</td>
+                          <td className="px-3 py-2 text-right">{s.totalQuantity}</td>
+                          <td className="px-3 py-2 text-right">{s.totalRevenue.toLocaleString()}₮</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <Text size="small" className="text-ui-fg-muted mt-4">
               Файл автоматаар татагдсан.
             </Text>

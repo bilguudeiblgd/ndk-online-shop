@@ -45,11 +45,7 @@ module.exports = defineConfig({
       return {
         server: {
           host: "0.0.0.0",
-          allowedHosts: [
-            "localhost",
-            ".localhost",
-            "127.0.0.1",
-          ],
+          allowedHosts: true,
           hmr: {
             port: 5173,
             clientPort: 5173,
