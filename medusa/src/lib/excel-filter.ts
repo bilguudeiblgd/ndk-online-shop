@@ -89,7 +89,6 @@ function parseNumber(val: unknown): number {
 // --- Matching engine ---
 
 const MAX_QTY = 5
-const MAX_ATTEMPTS = 50000
 
 function findMatches(
   amount: number,
@@ -136,46 +135,6 @@ function solveAmount(
         ]
       }
     }
-  }
-
-  // Multi-variant combination (bounded subset sum)
-  if (variants.length >= 2) {
-    let attempts = 0
-    const solve = (
-      remaining: number,
-      idx: number
-    ): TransactionMatch[] | null => {
-      if (remaining === 0) return []
-      if (remaining < 0 || idx >= variants.length) return null
-      if (++attempts > MAX_ATTEMPTS) return null
-
-      const v = variants[idx]
-      const priceInt = Math.round(v.price)
-      if (priceInt <= 0) return solve(remaining, idx + 1)
-
-      const maxQ = Math.min(MAX_QTY, Math.floor(remaining / priceInt))
-      for (let qty = maxQ; qty >= 0; qty--) {
-        const sub = priceInt * qty
-        const rest = solve(remaining - sub, idx + 1)
-        if (rest !== null) {
-          return qty > 0
-            ? [
-                {
-                  variantId: v.variantId,
-                  productTitle: v.productTitle,
-                  variantTitle: v.variantTitle,
-                  quantity: qty,
-                  subtotal: sub,
-                },
-                ...rest,
-              ]
-            : rest
-        }
-      }
-      return null
-    }
-    const combo = solve(targetInt, 0)
-    if (combo && combo.length > 0) return combo
   }
 
   return null
@@ -425,7 +384,76 @@ async function generateOutput(
     ws.getColumn(7).width = 20
   }
 
-  addSheet("Зөв", result.accepted, "FFC6EFCE")
+  // "Зөв" sheet — grouped by product/variant
+  if (result.accepted.length) {
+    const ws = wb.addWorksheet("Зөв")
+    const hRow = ws.addRow(headers)
+    hRow.eachCell((cell) => {
+      cell.fill = headerFill
+      cell.font = headerFont
+      cell.alignment = { horizontal: "center" }
+    })
+
+    const rowFill: ExcelJS.FillPattern = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFC6EFCE" },
+    }
+    const groupFill: ExcelJS.FillPattern = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4472C4" },
+    }
+    const groupFont: Partial<ExcelJS.Font> = {
+      bold: true,
+      color: { argb: "FFFFFFFF" },
+      size: 11,
+    }
+
+    // Group by matchLabel (product combo), sort by label
+    const groups = new Map<string, Transaction[]>()
+    for (const t of result.accepted) {
+      const key = t.matchLabel || "Бусад"
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(t)
+    }
+
+    const sortedKeys = Array.from(groups.keys()).sort()
+    for (const key of sortedKeys) {
+      const txns = groups.get(key)!
+      // Group header row
+      const labelRow = ws.addRow([`${key}  (${txns.length})`])
+      labelRow.eachCell((cell) => {
+        cell.fill = groupFill
+        cell.font = groupFont
+      })
+      ws.mergeCells(labelRow.number, 1, labelRow.number, headers.length)
+
+      for (const t of txns) {
+        const r = ws.addRow([
+          t.date,
+          t.phone,
+          t.amount,
+          t.matchLabel,
+          t.message,
+          t.status,
+          t.account,
+        ])
+        r.eachCell((cell) => {
+          cell.fill = rowFill
+        })
+      }
+    }
+
+    ws.getColumn(1).width = 20
+    ws.getColumn(2).width = 12
+    ws.getColumn(3).width = 15
+    ws.getColumn(4).width = 30
+    ws.getColumn(5).width = 40
+    ws.getColumn(6).width = 18
+    ws.getColumn(7).width = 20
+  }
+
   if (result.badAmount.length)
     addSheet("Дүн таарахгүй", result.badAmount, "FFFFC7CE")
   if (result.badPhone.length)
