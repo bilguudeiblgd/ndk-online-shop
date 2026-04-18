@@ -1,0 +1,24 @@
+app = 'ndk-online-shop'
+primary_region = 'nrt'
+
+[build]
+  dockerfile = 'Dockerfile.prod'
+
+[env]
+  NODE_ENV = 'production'
+  MEDUSA_HTTP_HOST = '0.0.0.0'
+  STORE_CORS = '*'
+  ADMIN_CORS = '*'
+  AUTH_CORS = '*'
+
+[http_service]
+  internal_port = 9000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

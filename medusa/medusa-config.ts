@@ -18,7 +18,7 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
     }
   },
-  modules: [
+  modules: process.env.REDIS_URL ? [
     {
       resolve: "@medusajs/medusa/cache-redis",
       options: {
@@ -39,7 +39,7 @@ module.exports = defineConfig({
         },
       },
     },
-  ],
+  ] : [],
   admin: {
     vite: () => {
       return {

@@ -14,14 +14,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# The build output in .medusa/server/ is the complete runnable app
 COPY --from=builder /app/.medusa/server/package.json ./
 COPY --from=builder /app/.medusa/server/package-lock.json ./
 RUN npm install --legacy-peer-deps --production
 
 COPY --from=builder /app/.medusa/server ./
-COPY --from=builder /app/.medusa/admin /app/.medusa/admin
 
 EXPOSE 9000
 
-CMD ["sh", "-c", "npx medusa db:migrate && npm run seed 2>/dev/null; npx medusa start"]
+CMD ["sh", "-c", "npx medusa db:migrate && npm run seed 2>/dev/null; npx medusa start -H 0.0.0.0"]
